@@ -1,7 +1,7 @@
 Design Sources' Hierarchy
 
     npu_top
-
+    
         cnn_top
         
             cnn_1
@@ -9,11 +9,9 @@ Design Sources' Hierarchy
             cnn_2
         fc
         
-        
             fc_mac_array
+            
         comparator
-        
-
 
 1st cnn layer --> stride=4; pooling=2x2,max; kernels=4x4,6;
 
