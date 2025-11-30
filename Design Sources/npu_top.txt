@@ -1,0 +1,284 @@
+`timescale 1ns/1ps
+
+module npu_top #(
+    parameter DATA_WIDTH = 8,
+    parameter IMG_W = 28,
+    parameter IMG_H = 28,
+    parameter K_H_1 = 4,
+    parameter K_W_1 = 4,
+    parameter K_H_2 = 2,
+    parameter K_W_2 = 2,
+    parameter NUM_KERNELS_1 = 6,
+    parameter NUM_KERNELS_2 = 2
+)(
+    input clk,rst,start,
+    output wire input_taken,
+    
+    output reg [DATA_WIDTH* IMG_H*IMG_W -1:0] in_image,
+    
+    output reg [DATA_WIDTH* K_H_1*K_W_1 *NUM_KERNELS_1 -1:0] in_kernel_1,
+
+    output reg [DATA_WIDTH* K_H_2*K_W_2 *NUM_KERNELS_2 -1:0] in_kernel_2_1,
+    output reg [DATA_WIDTH* K_H_2*K_W_2 *NUM_KERNELS_2 -1:0] in_kernel_2_2,
+    output reg [DATA_WIDTH* K_H_2*K_W_2 *NUM_KERNELS_2 -1:0] in_kernel_2_3,
+    output reg [DATA_WIDTH* K_H_2*K_W_2 *NUM_KERNELS_2 -1:0] in_kernel_2_4,
+    output reg [DATA_WIDTH* K_H_2*K_W_2 *NUM_KERNELS_2 -1:0] in_kernel_2_5,
+    output reg [DATA_WIDTH* K_H_2*K_W_2 *NUM_KERNELS_2 -1:0] in_kernel_2_6,
+    
+    output wire [DATA_WIDTH* NUM_KERNELS_1* 4*4 *1 -1:0] out_value_conv1,
+    output wire [DATA_WIDTH* NUM_KERNELS_2* 2*2 *NUM_KERNELS_1 -1:0] out_value_conv2,
+    
+    output wire valid_out_conv1,
+    output wire valid_out_conv2,
+    
+    output  reg [DATA_WIDTH *NUM_KERNELS_2 *2*2 *NUM_KERNELS_1 *10 -1:0] fc_weight,
+    output reg [8 *10 -1:0] fc_bias,
+    
+    output wire [32 *10 -1:0] fc_output,
+    output wire fc_done,
+    
+    output wire [4 -1:0] out_value,
+    output wire valid_out,
+    
+    output wire [DATA_WIDTH*16-1:0] window_flat,
+    output wire [DATA_WIDTH*16-1:0] kernel_flat,
+    output wire [(DATA_WIDTH*4)*(2+9-1)-1:0] mac_out,
+    output wire [DATA_WIDTH*2*9-1:0] activation_out,
+        output wire [DATA_WIDTH*2*9-1:0] transposed_out,
+        output wire [DATA_WIDTH*2*4 -1:0] pooled_out
+        
+ 
+);
+
+    reg started = 1'b0;
+    reg memory_read = 1'b0;
+    reg reg_loaded = 1'b0;
+    reg start_npu = 1'b0;
+    reg [8 -1:0] image_mem [0: 28*28 -1];
+
+    //conv1 weights
+    reg signed [8 -1:0] weight_mem_1_1 [0: K_H_1*K_W_1 -1];
+    reg signed [8 -1:0] weight_mem_1_2 [0: K_H_1*K_W_1 -1];
+    reg signed [8 -1:0] weight_mem_1_3 [0: K_H_1*K_W_1 -1];
+    reg signed [8 -1:0] weight_mem_1_4 [0: K_H_1*K_W_1 -1];
+    reg signed [8 -1:0] weight_mem_1_5 [0: K_H_1*K_W_1 -1];
+    reg signed [8 -1:0] weight_mem_1_6 [0: K_H_1*K_W_1 -1];
+    
+    //conv2 weights
+    reg signed [8 -1:0] weight_mem_2_1_1 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_1_2 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_2_1 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_2_2 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_3_1 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_3_2 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_4_1 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_4_2 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_5_1 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_5_2 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_6_1 [0: K_H_2*K_W_2 -1];
+    reg signed [8 -1:0] weight_mem_2_6_2 [0: K_H_2*K_W_2 -1];
+    
+    reg signed [DATA_WIDTH -1:0] fc_weight_mem [0: NUM_KERNELS_2* 2*2 *NUM_KERNELS_1 *10 -1];
+    reg signed [DATA_WIDTH -1:0] fc_bias_mem [0: 10 -1];
+    
+
+    
+    
+ 
+            integer i=0,j=0,k=0;
+        always @(posedge clk) begin
+        if(started && ~memory_read) begin
+            $readmemh("9_0.mem", image_mem);
+            
+            $readmemh("conv1_weight_1.mem", weight_mem_1_1);
+            $readmemh("conv1_weight_2.mem", weight_mem_1_2);
+            $readmemh("conv1_weight_3.mem", weight_mem_1_3);
+            $readmemh("conv1_weight_4.mem", weight_mem_1_4);
+            $readmemh("conv1_weight_5.mem", weight_mem_1_5);
+            $readmemh("conv1_weight_6.mem", weight_mem_1_6);
+            
+            $readmemh("conv2_weight_1_1.mem", weight_mem_2_1_1);
+            $readmemh("conv2_weight_1_2.mem", weight_mem_2_1_2);
+            $readmemh("conv2_weight_2_1.mem", weight_mem_2_2_1);
+            $readmemh("conv2_weight_2_2.mem", weight_mem_2_2_2);
+            $readmemh("conv2_weight_3_1.mem", weight_mem_2_3_1);
+            $readmemh("conv2_weight_3_2.mem", weight_mem_2_3_2);
+            $readmemh("conv2_weight_4_1.mem", weight_mem_2_4_1);
+            $readmemh("conv2_weight_4_2.mem", weight_mem_2_4_2);
+            $readmemh("conv2_weight_5_1.mem", weight_mem_2_5_1);
+            $readmemh("conv2_weight_5_2.mem", weight_mem_2_5_2);
+            $readmemh("conv2_weight_6_1.mem", weight_mem_2_6_1);
+            $readmemh("conv2_weight_6_2.mem", weight_mem_2_6_2);
+            
+            $readmemh("fc_weight.mem", fc_weight_mem);
+            $readmemh("fc_bias.mem", fc_bias_mem);
+            
+            memory_read = 1'b1;
+        end
+        
+        
+        if(started && memory_read && ~reg_loaded) begin
+            //loading image mem data to image reg
+            for(i=0; i<IMG_H; i=i+1) begin
+                for(j=0; j<IMG_W; j=j+1) begin
+                    in_image[(i*IMG_W + j)*DATA_WIDTH +: DATA_WIDTH] = image_mem[i*IMG_W + j];
+                end
+            end
+    
+            //loading weight mem data to kernels reg
+            //conv1
+            for(i=0; i<K_H_1*K_W_1; i=i+1) begin
+                in_kernel_1[(0*K_H_1*K_W_1+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_1_1[i];
+            end
+            for(i=0; i<K_H_1*K_W_1; i=i+1) begin
+                in_kernel_1[(1*K_H_1*K_W_1+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_1_2[i];
+            end
+            for(i=0; i<K_H_1*K_W_1; i=i+1) begin
+                in_kernel_1[(2*K_H_1*K_W_1+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_1_3[i];
+            end        
+            for(i=0; i<K_H_1*K_W_1; i=i+1) begin
+                in_kernel_1[(3*K_H_1*K_W_1+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_1_4[i];
+            end
+            for(i=0; i<K_H_1*K_W_1; i=i+1) begin
+                in_kernel_1[(4*K_H_1*K_W_1+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_1_5[i];
+            end
+            for(i=0; i<K_H_1*K_W_1; i=i+1) begin
+                in_kernel_1[(5*K_H_1*K_W_1+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_1_6[i];
+            end 
+            
+            //conv2
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_1[(0*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_1_1[i];
+            end     
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_1[(1*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_1_2[i];
+            end 
+            
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_2[(0*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_2_1[i];
+            end     
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_2[(1*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_2_2[i];
+            end 
+            
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_3[(0*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_3_1[i];
+            end     
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_3[(1*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_3_2[i];
+            end 
+            
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_4[(0*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_4_1[i];
+            end     
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_4[(1*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_4_2[i];
+            end 
+            
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_5[(0*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_5_1[i];
+            end     
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_5[(1*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_5_2[i];
+            end 
+            
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_6[(0*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_6_1[i];
+            end     
+            for(i=0; i<K_H_2*K_W_2; i=i+1) begin
+                in_kernel_2_6[(1*K_H_2*K_W_2+i)*DATA_WIDTH +: DATA_WIDTH] = weight_mem_2_6_2[i];
+            end 
+            
+            for(i=0; i<(NUM_KERNELS_2* 2*2 *NUM_KERNELS_1 *10); i=i+1) begin
+               fc_weight[i*DATA_WIDTH +: DATA_WIDTH] = fc_weight_mem[i];
+            end
+            
+            for(i=0; i<10; i=i+1) begin
+                fc_bias[i*DATA_WIDTH +: DATA_WIDTH] = fc_bias_mem[i];
+            end
+            
+            reg_loaded <= 1'b1;
+            start_npu <= 1'b1;
+    end
+             
+        end
+        
+    
+    cnn_top #(
+        .DATA_WIDTH(DATA_WIDTH)
+    ) convolution (
+        .clk(clk),
+        .rst(rst),
+        .start(start_npu),
+        .input_taken(input_taken),
+        .in_image(in_image),
+        .in_kernel_1(in_kernel_1),
+        .in_kernel_2_1(in_kernel_2_1),
+        .in_kernel_2_2(in_kernel_2_2),
+        .in_kernel_2_3(in_kernel_2_3),
+        .in_kernel_2_4(in_kernel_2_4),
+        .in_kernel_2_5(in_kernel_2_5),
+        .in_kernel_2_6(in_kernel_2_6),
+        
+        .pool_type(1'b0),
+        .act_type(00),
+        
+        .out_value_conv1(out_value_conv1),
+        .out_value_conv2(out_value_conv2),
+        .valid_out_conv1(valid_out_conv1),
+        .valid_out_conv2(valid_out_conv2),
+        
+        .window_flat(window_flat),
+        .kernel_flat(kernel_flat),
+        .mac_out(mac_out),
+        .activation_out(activation_out),
+        .transposed_out(transposed_out),
+        .pooled_out(pooled_out)
+        
+    );
+    
+    fc #(
+        .DATA_WIDTH(DATA_WIDTH),
+        .ACC_WIDTH(32),
+        .NUM_INPUTS(NUM_KERNELS_1*NUM_KERNELS_2*K_H_2*K_W_2),
+        .NUM_OUTPUTS(10)
+    ) fully_connected_layer (
+        .clk(clk),
+        .rst(rst),
+        .start(valid_out_conv2),
+        .in_vec_flat(out_value_conv2),
+        .w_mat_flat(fc_weight),
+        .bias_flat(fc_bias),
+        .out_vec_flat(fc_output),
+        .finish(fc_done)
+        
+    );
+    
+    comparator #(
+        .DATA_WIDTH(32),
+        .N(10)
+    ) output_decision(
+        .clk(clk),
+        .rst(rst),
+        .load(fc_done),
+        .data_in(fc_output),
+        .decision(out_value),
+        .valid_out(valid_out)
+    );
+        
+        
+    
+    
+    always @(posedge clk or posedge rst) begin
+        if(rst) begin
+            started <= 1'b0;
+            memory_read <= 1'b0;
+            reg_loaded <= 1'b0;
+        end
+        else if (clk) begin
+            if(start) started=1'b1;
+            if(start_npu) start_npu <= 1'b0;
+        end
+    end
+    
+endmodule

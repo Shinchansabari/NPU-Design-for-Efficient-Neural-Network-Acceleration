@@ -1,0 +1,60 @@
+`timescale 1ns / 1ps
+
+module weight_unit #(
+    parameter DATA_WIDTH = 8,
+    parameter K_H = 3,
+    parameter K_W = 3,
+    parameter NUM_KERNELS = 3
+)(
+    input clk,
+    input rst,
+    input start,
+    input next_kernel,
+    input [DATA_WIDTH*K_H*K_W*NUM_KERNELS -1:0] input_value,
+    
+    output reg [DATA_WIDTH*K_H*K_W -1:0] output_value,
+    output reg output_done=1'b0,
+    output reg done=1'b0
+);
+
+    integer n=0;
+    reg started=1'b0;
+
+    always @(posedge clk or posedge rst) begin
+        if(start) started <= 1'b1;
+        if(rst) begin
+            output_value <= {DATA_WIDTH*K_H*K_W {1'b0}};
+            done <= 1'b0;
+            started <= 1'b0;
+        end
+        else if(started) begin
+            if((n < NUM_KERNELS) && next_kernel && ~output_done) begin
+                output_value <= input_value[n*DATA_WIDTH*K_H*K_W +: DATA_WIDTH*K_H*K_W];
+                output_done <= 1'b1;
+                n = n+1;
+            end
+            else if(n >= NUM_KERNELS) begin
+                done <= 1'b1;
+                started <= 1'b0;
+                output_value <= {DATA_WIDTH*K_H*K_W {1'b0}};
+                output_done <= 1'b1;
+                n=0;
+            end
+        end
+    end  
+    
+    always @(posedge clk or posedge rst) begin
+        if(rst) begin
+            output_done <= 1'b0;
+            done <= 1'b0;
+            n=0;
+        end
+        else begin
+            if(output_done) begin
+                output_done <= 1'b0;
+            end 
+            if(done) done <= 1'b0;
+        end
+    end
+
+endmodule

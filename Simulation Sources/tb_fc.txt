@@ -1,0 +1,74 @@
+`timescale 1ns/1ps
+
+module tb_fc;
+
+    localparam DATA_WIDTH = 8;
+    localparam ACC_WIDTH  = 32;
+    localparam NUM_INPUTS   = 48;
+    localparam NUM_OUTPUTS  = 10;
+
+    reg clk;
+    reg rst;
+    reg start;
+
+    reg  signed [NUM_INPUTS*DATA_WIDTH-1:0] in_vec_flat;
+    reg  signed [NUM_INPUTS*NUM_OUTPUTS*DATA_WIDTH-1:0] w_mat_flat;
+    reg  signed [NUM_OUTPUTS*DATA_WIDTH-1:0] bias_flat;
+    wire signed [NUM_OUTPUTS*ACC_WIDTH-1:0] out_vec_flat;
+    wire finish;
+
+    fc #(
+        .DATA_WIDTH(DATA_WIDTH),
+        .ACC_WIDTH (ACC_WIDTH),
+        .NUM_INPUTS  (NUM_INPUTS),
+        .NUM_OUTPUTS (NUM_OUTPUTS)
+    ) uut (
+        .clk(clk),
+        .rst(rst),
+        .start(start),
+        .in_vec_flat(in_vec_flat),
+        .w_mat_flat(w_mat_flat),
+        .bias_flat(bias_flat),
+        .out_vec_flat(out_vec_flat),
+        .finish(finish)
+    );
+
+    initial begin
+        clk = 0;
+        forever #5 clk = ~clk;
+    end
+
+    integer i, j;
+
+    initial begin
+        rst = 1;
+        start = 0;
+        in_vec_flat = 0;
+        w_mat_flat  = 0;
+        bias_flat   = 0;
+        #20;
+
+        rst = 0;
+        #10;
+
+        // All inputs = 1
+        for (i = 0; i < NUM_INPUTS; i = i + 1)
+            in_vec_flat[(i+1)*DATA_WIDTH-1 -: DATA_WIDTH] = 8'sd1;
+
+
+        for (j = 0; j < NUM_OUTPUTS; j = j + 1)
+            for (i = 0; i < NUM_INPUTS; i = i + 1)
+                w_mat_flat[((j*NUM_INPUTS) + i + 1)*DATA_WIDTH-1 -: DATA_WIDTH] = 8'sd1;
+
+        // Bias all 1s
+        for (j = 0; j < NUM_OUTPUTS; j = j + 1)
+            bias_flat[(j+1)*DATA_WIDTH-1 -: DATA_WIDTH] = 8'sd1;
+
+        start = 1; #10; start = 0; #40;
+
+
+        #10;
+        $finish;
+    end
+
+endmodule
